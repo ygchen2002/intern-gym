@@ -232,27 +232,82 @@ class TestImprovedStrategy:
 
 
 class TestNoLookahead:
-    """防止未来函数测试"""
-    
+    """防止未来函数测试（严格检查）"""
+
     def test_no_future_data_in_baseline(self):
         """测试baseline没有使用未来数据"""
         universe = pd.read_parquet(REPO_ROOT / "research-data" / "ipo_universe.parquet")
         daily_bars = pd.read_parquet(REPO_ROOT / "research-data" / "daily_bars.parquet")
         features = build_daily_ipo_features(universe, daily_bars, threshold=-1.0)
-        
+
         for _, feature in features.iterrows():
             # 入场日期必须在第一天之后
             assert feature["entry_date"] > feature["trade_date_1"]
-    
+
     def test_no_future_data_in_improved(self):
         """测试改进策略没有使用未来数据"""
         universe = pd.read_parquet(REPO_ROOT / "research-data" / "ipo_universe.parquet")
         daily_bars = pd.read_parquet(REPO_ROOT / "research-data" / "daily_bars.parquet")
         features = build_improved_features(universe, daily_bars, None, threshold=-1.0)
-        
+
         for _, feature in features.iterrows():
             # 入场日期必须在第一天之后
             assert feature["entry_date"] > feature["trade_date_1"]
+
+    def test_volume_ratio_uses_cross_sectional_average(self):
+        """测试volume_ratio使用的是cross-sectional平均值（不使用未来数据）"""
+        universe = pd.read_parquet(REPO_ROOT / "research-data" / "ipo_universe.parquet")
+        daily_bars = pd.read_parquet(REPO_ROOT / "research-data" / "daily_bars.parquet")
+        features = build_improved_features(universe, daily_bars, None, threshold=-1.0)
+
+        # 检查sample_avg_volume列存在且所有值相同（cross-sectional比较）
+        assert "sample_avg_volume" in features.columns
+        sample_avg_volumes = features["sample_avg_volume"].unique()
+        # 所有行应该使用相同的sample_avg_volume（整个样本的平均值）
+        assert len(sample_avg_volumes) == 1
+
+        # 验证volume_ratio = first_day_volume / sample_avg_volume
+        for _, feature in features.iterrows():
+            expected_ratio = feature["first_day_volume"] / feature["sample_avg_volume"]
+            assert feature["volume_ratio"] == pytest.approx(expected_ratio, rel=1e-6)
+
+    def test_volume_ratio_not_using_self_future_data(self):
+        """测试volume_ratio不使用该股票自身的未来数据"""
+        universe = pd.read_parquet(REPO_ROOT / "research-data" / "ipo_universe.parquet")
+        daily_bars = pd.read_parquet(REPO_ROOT / "research-data" / "daily_bars.parquet")
+        daily = daily_bars.copy()
+        daily["symbol"] = daily["symbol"].astype(str).str.upper()
+        daily["volume"] = pd.to_numeric(daily["volume"], errors="coerce").fillna(0)
+
+        features = build_improved_features(universe, daily_bars, None, threshold=-1.0)
+
+        for _, feature in features.iterrows():
+            symbol = feature["symbol"]
+            first_day_volume = feature["first_day_volume"]
+
+            # 获取该股票所有天的成交量
+            stock_volumes = daily[daily["symbol"] == symbol]["volume"].values
+            # volume_ratio不应该等于 first_day_volume / stock_volumes.mean()
+            # 因为那是使用了未来数据
+            self_avg = stock_volumes.mean()
+            if self_avg > 0:
+                wrong_ratio = first_day_volume / self_avg
+                # volume_ratio应该不等于使用自身未来数据计算的值
+                assert feature["volume_ratio"] != pytest.approx(wrong_ratio, rel=1e-6), \
+                    f"volume_ratio={feature['volume_ratio']} 等于使用自身未来数据计算的值 {wrong_ratio}"
+
+    def test_entry_date_before_exit_date(self):
+        """测试所有交易的入场日期在出场日期之前"""
+        universe = pd.read_parquet(REPO_ROOT / "research-data" / "ipo_universe.parquet")
+        daily_bars = pd.read_parquet(REPO_ROOT / "research-data" / "daily_bars.parquet")
+        cost_model = load_cost_model(REPO_ROOT / "research-data" / "cost_model.json")
+
+        features = build_improved_features(universe, daily_bars, None, threshold=-1.0)
+        trades = generate_improved_trades(features, daily_bars, cost_model)
+
+        for _, trade in trades.iterrows():
+            assert trade["entry_date"] < trade["exit_date"], \
+                f"交易 {trade['symbol']}: 入场日期 {trade['entry_date']} >= 出场日期 {trade['exit_date']}"
 
 
 if __name__ == "__main__":

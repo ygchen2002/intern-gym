@@ -1,0 +1,32 @@
+{
+  "baseline": {
+    "trade_count": 14,
+    "win_rate": 0.42857142857142855,
+    "average_return": 0.006823000786612602,
+    "average_win": 0.20145346634344774,
+    "average_loss": -0.1391498483810138,
+    "profit_factor": 1.08527605710869,
+    "total_return": 0.09552201101257643,
+    "max_drawdown": -63182.65769536795,
+    "turnover": 1399040.38274,
+    "average_holding_days": 1.0
+  },
+  "improved": {
+    "trade_count": 8,
+    "win_rate": 0.125,
+    "average_return": -0.006419675176223813,
+    "average_win": 0.5113805570522777,
+    "average_loss": -0.0803911369231526,
+    "profit_factor": 0.9091149913400236,
+    "total_return": -0.051357401409790504,
+    "max_drawdown": -41592.28553999596,
+    "turnover": 799399.1405399999,
+    "average_holding_days": 1.0
+  },
+  "comparison": {
+    "trade_count_diff": -6,
+    "win_rate_diff": -0.30357142857142855,
+    "total_return_diff": -0.14687941242236693,
+    "max_drawdown_diff": 21590.372155371988
+  }
+}
