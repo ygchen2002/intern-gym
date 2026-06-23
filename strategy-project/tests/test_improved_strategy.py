@@ -309,6 +309,61 @@ class TestNoLookahead:
             assert trade["entry_date"] < trade["exit_date"], \
                 f"交易 {trade['symbol']}: 入场日期 {trade['entry_date']} >= 出场日期 {trade['exit_date']}"
 
+    def test_all_signals_recorded_no_survivorship_bias(self):
+        """测试所有信号触发的交易都被记录（无幸存者偏差）"""
+        universe = pd.read_parquet(REPO_ROOT / "research-data" / "ipo_universe.parquet")
+        daily_bars = pd.read_parquet(REPO_ROOT / "research-data" / "daily_bars.parquet")
+        cost_model = load_cost_model(REPO_ROOT / "research-data" / "cost_model.json")
+
+        features = build_improved_features(universe, daily_bars, None, threshold=-1.0)
+        trades = generate_improved_trades(features, daily_bars, cost_model)
+
+        # 所有improved_signal为True的股票都应该有交易记录
+        signal_count = features["improved_signal"].sum()
+        trade_count = len(trades)
+
+        # 交易数应该等于信号数（不能因为亏损就跳过）
+        assert trade_count == signal_count, \
+            f"信号数 {signal_count} != 交易数 {trade_count}，存在幸存者偏差！"
+
+        # 验证每笔交易都有对应的信号
+        trade_symbols = set(trades["symbol"].tolist())
+        signal_symbols = set(features[features["improved_signal"]]["symbol"].tolist())
+        assert trade_symbols == signal_symbols, \
+            f"交易股票 {trade_symbols} != 信号股票 {signal_symbols}"
+
+    def test_no_profit_filter_in_trade_generation(self):
+        """测试交易生成中没有使用盈亏过滤（无未来函数）"""
+        # 这个测试通过代码审查来验证
+        # 检查generate_improved_trades函数中没有基于net_pnl跳过交易的逻辑
+        import inspect
+        source = inspect.getsource(generate_improved_trades)
+
+        # 移除注释行，只检查实际执行的代码
+        lines = source.split('\n')
+        active_lines = []
+        for line in lines:
+            stripped = line.strip()
+            # 跳过注释行
+            if stripped.startswith('#'):
+                continue
+            active_lines.append(line)
+        active_source = '\n'.join(active_lines)
+
+        # 检查是否有基于net_pnl跳过交易的代码
+        # 这些是不允许的模式
+        forbidden_patterns = [
+            "if net_pnl < 0",
+            "if net_pnl <= 0",
+            "if net_pnl > 0",
+            "if pnl < 0",
+            "if return < 0",
+        ]
+
+        for pattern in forbidden_patterns:
+            assert pattern not in active_source, \
+                f"发现禁止的盈亏过滤模式: '{pattern}'，这会导致幸存者偏差！"
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

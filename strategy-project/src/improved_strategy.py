@@ -255,9 +255,10 @@ def generate_improved_trades(
         slippage = abs(entry_price - entry_raw) * shares + abs(exit_raw - exit_price) * shares
         net_pnl = gross_pnl - fees
 
-        # 成本约束：如果预期利润太低，不交易
-        if net_pnl < 0 and exit_reason == "holding_period":
-            continue
+        # 注意：所有触发信号的交易都必须记录，无论盈亏
+        # 不能因为结果不好就跳过，这是幸存者偏差/未来函数
+        # if net_pnl < 0 and exit_reason == "holding_period":
+        #     continue  # ← 已删除，这是错误的！
 
         trades.append({
             "symbol": symbol,
